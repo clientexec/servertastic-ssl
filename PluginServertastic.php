@@ -27,24 +27,24 @@ class PluginServertastic extends SSLPlugin
     function getVariables()
     {
         $variables = array(
-            /*T*/'Plugin Name'/*/T*/ => array (
+            lang('Plugin Name') => array (
                                 'type'          =>'hidden',
-                                'description'   =>/*T*/'How CE sees this plugin (not to be confused with the Signup Name)'/*/T*/,
-                                'value'         =>/*T*/'ServerTastic'/*/T*/
+                                'description'   =>lang('How CE sees this plugin (not to be confused with the Signup Name)'),
+                                'value'         =>lang('ServerTastic')
                                ),
-            /*T*/'Use testing server'/*/T*/ => array(
+            lang('Use testing server') => array(
                                 'type'          =>'yesno',
-                                'description'   =>/*T*/'Select Yes if you wish to use ServerTastic\'s testing environment, so that transactions are not actually made. For this to work, you must first register you server\'s ip in ServerTastic\'s testing environment, and your server\'s name servers must be registered there as well.'/*/T*/,
+                                'description'   =>lang('Select Yes if you wish to use ServerTastic\'s testing environment, so that transactions are not actually made. For this to work, you must first register you server\'s ip in ServerTastic\'s testing environment, and your server\'s name servers must be registered there as well.'),
                                 'value'         =>0
                                ),
-            /*T*/'API Key'/*/T*/ => array(
+            lang('API Key') => array(
                                 'type'          =>'text',
-                                'description'   =>/*T*/'Enter your API Key here.'/*/T*/,
+                                'description'   =>lang('Enter your API Key here.'),
                                 'value'         =>''
                                ),
-             /*T*/'Actions'/*/T*/ => array (
+             lang('Actions') => array (
                                 'type'          => 'hidden',
-                                'description'   => /*T*/'Current actions that are active for this plugin (when a domain isn\'t registered)'/*/T*/,
+                                'description'   => lang('Current actions that are active for this plugin (when a domain isn\'t registered)'),
                                 'value'         => 'Purchase,CancelConfiguration (Cancel Configuration),ResendInviteEmail (Resend Invite Email),ResendFulfillmentEmail (Resend Fulfillment Email)'
                                 )
         );
