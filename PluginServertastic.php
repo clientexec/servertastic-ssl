@@ -226,7 +226,7 @@ class PluginServertastic extends SSLPlugin
 
     function _makeRequest($url, $arguments)
     {
-        require_once 'newedge/classes/NE_Network.php';
+        require_once 'library/CE/NE_Network.php';
 
         $request = 'https://';
 
