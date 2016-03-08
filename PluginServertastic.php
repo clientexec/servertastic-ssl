@@ -243,7 +243,7 @@ class PluginServertastic extends SSLPlugin
             $i++;
         }
 
-        $this->logger->log(4, 'ServerTastic Params: '. print_r($arguments, true));
+        CE_Lib::log(4, 'ServerTastic Params: '. print_r($arguments, true));
         $response = NE_Network::curlRequest($this->settings, $request, false, false, true);
 
         if (is_a($response, 'NE_Error')) throw new CE_Exception ($response);
