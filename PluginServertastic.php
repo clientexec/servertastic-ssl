@@ -7,14 +7,16 @@ class PluginServertastic extends SSLPlugin
     public $mappedTypeIds = array (
         SSL_CERT_RAPIDSSL                               => 'RapidSSL',
         SSL_CERT_RAPIDSSL_WILDCARD                      => 'RapidSSLWildcard',
+        SSL_CERT_COMODO_POSITIVESSL                     => 'PositiveSSL',
+        SSL_CERT_COMODO_POSITIVESSL_WILDCARD            => 'PositiveSSLWildcard',
         SSL_CERT_GEOTRUST_QUICKSSL_PREMIUM              => 'QuickSSLPremium',
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID               => 'TrueBizID',
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV            => 'TrueBizIDEV',
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID_WILDCARD      => 'TrueBizIDWildcard',
-        SSL_CERT_VERISIGN_SECURE_SITE                   => 'SecureSite',
-        SSL_CERT_VERISIGN_SECURE_SITE_PRO               => 'SecureSitePro',
-        SSL_CERT_VERISIGN_SECURE_SITE_EV                => 'SecureSiteEV',
-        SSL_CERT_VERISIGN_SECURE_SITE_PRO_EV            => 'SecureSiteProEV',
+        SSL_CERT_SYMANTEC_SECURE_SITE                   => 'SecureSite',
+        SSL_CERT_SYMANTEC_SECURE_SITE_PRO               => 'SecureSitePro',
+        SSL_CERT_SYMANTEC_SECURE_SITE_EV                => 'SecureSiteEV',
+        SSL_CERT_SYMANTEC_SECURE_SITE_PRO_EV            => 'SecureSiteProEV',
         SSL_CERT_THAWTE_SSL123                          => 'SSL123',
         SSL_CERT_THAWTE_SGC_SUPERCERT                   => 'SGCSuperCerts',
         SSL_CERT_THAWTE_SSL_WEBSERVER                   => 'SSLWebServer',
@@ -99,8 +101,7 @@ class PluginServertastic extends SSLPlugin
         $params = $this->buildParams($userPackage);
 
         $arguments = array(
-            'api_key'           => $params['API Key'],
-            'reseller_order_id' => $params['certId']
+            'order_token'       => $params['certId']
         );
 
         $response = $this->_makeRequest('/order/review', $arguments);
@@ -130,8 +131,7 @@ class PluginServertastic extends SSLPlugin
         $params = $this->buildParams($userPackage);
 
         $arguments = array(
-            'api_key'               => $params['API Key'],
-            'reseller_order_id'     => $params['certId']
+            'order_token'           => $params['certId']
         );
         $response = $this->_makeRequest('/order/review', $arguments);
 
@@ -230,10 +230,10 @@ class PluginServertastic extends SSLPlugin
 
         $request = 'https://';
 
-        if (@$this->settings->get('plugin_ServerTastic_Use testing server')) $request .= 'test-api.servertastic.com';
-        else $request .= 'api.servertastic.com';
+        if (@$this->settings->get('plugin_ServerTastic_Use testing server')) $request .= 'test-api2.servertastic.com';
+        else $request .= 'api2.servertastic.com';
 
-        $request .= '/ssl' . $url;
+        $request .= $url;
 
         $i = 0;
         foreach ($arguments as $name => $value) {
