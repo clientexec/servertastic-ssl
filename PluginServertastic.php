@@ -4,7 +4,7 @@ require_once 'modules/admin/models/SSLPlugin.php';
 
 class PluginServertastic extends SSLPlugin
 {
-    public $mappedTypeIds = array (
+    public $mappedTypeIds = array(
         SSL_CERT_RAPIDSSL                               => 'RapidSSL',
         SSL_CERT_RAPIDSSL_WILDCARD                      => 'RapidSSLWildcard',
         SSL_CERT_COMODO_POSITIVESSL                     => 'PositiveSSL',
@@ -13,88 +13,312 @@ class PluginServertastic extends SSLPlugin
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID               => 'TrueBizID',
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV            => 'TrueBizIDEV',
         SSL_CERT_GEOTRUST_TRUE_BUSINESSID_WILDCARD      => 'TrueBizIDWildcard',
-        SSL_CERT_SYMANTEC_SECURE_SITE                   => 'SecureSite',
-        SSL_CERT_SYMANTEC_SECURE_SITE_PRO               => 'SecureSitePro',
-        SSL_CERT_SYMANTEC_SECURE_SITE_EV                => 'SecureSiteEV',
-        SSL_CERT_SYMANTEC_SECURE_SITE_PRO_EV            => 'SecureSiteProEV',
-        SSL_CERT_THAWTE_SSL123                          => 'SSL123',
-        SSL_CERT_THAWTE_SGC_SUPERCERT                   => 'SGCSuperCerts',
+        SSL_CERT_VERISIGN_SECURE_SITE                   => 'SecureSite',
+        SSL_CERT_VERISIGN_SECURE_SITE_EV                => 'SecureSiteEV',
+        SSL_CERT_VERISIGN_SECURE_SITE_PRO               => 'SecureSitePro',
+        SSL_CERT_VERISIGN_SECURE_SITE_PRO_EV            => 'SecureSiteProEV',
         SSL_CERT_THAWTE_SSL_WEBSERVER                   => 'SSLWebServer',
+        SSL_CERT_THAWTE_SSL_WEBSERVER_WILDCARD          => 'SSLWebServerWildCard',
         SSL_CERT_THAWTE_SSL_WEBSERVER_EV                => 'SSLWebServerEV',
-        SSL_CERT_THAWTE_SSL_WEBSERVER_WILDCARD          => 'SSLWebServerWildCard'
+        SSL_CERT_THAWTE_SSL123                          => 'SSL123'
     );
 
-    public $usingInviteURL = true;
+    // This is no longer applicable for ServerTastic, keeping it around because
+    // other logic outside of this plugin depends on it.
+    public $usingInviteURL = false;
 
+    /**
+     * Gets the variables needed for the plugin.
+     *
+     *
+     * @return array An array of configured variables.
+     */
     function getVariables()
     {
         $variables = array(
-            lang('Plugin Name') => array (
-                                'type'          =>'hidden',
-                                'description'   =>lang('How CE sees this plugin (not to be confused with the Signup Name)'),
-                                'value'         =>lang('ServerTastic')
-                               ),
+            lang('Plugin Name') => array(
+                'type'          => 'hidden',
+                'description'   => lang('How CE sees this plugin (not to be confused with the Signup Name)'),
+                'value'         => lang('ServerTastic')
+            ),
             lang('Use testing server') => array(
-                                'type'          =>'yesno',
-                                'description'   =>lang('Select Yes if you wish to use ServerTastic\'s testing environment, so that transactions are not actually made. For this to work, you must first register you server\'s ip in ServerTastic\'s testing environment, and your server\'s name servers must be registered there as well.'),
-                                'value'         =>0
-                               ),
+                'type'          => 'yesno',
+                'description'   => lang('Select Yes if you wish to use ServerTastic\'s testing environment, so that transactions are not actually made. For this to work, you must first register you server\'s ip in ServerTastic\'s testing environment, and your server\'s name servers must be registered there as well.'),
+                'value'         => 0
+            ),
             lang('API Key') => array(
-                                'type'          =>'text',
-                                'description'   =>lang('Enter your API Key here.'),
-                                'value'         =>''
-                               ),
-             lang('Actions') => array (
-                                'type'          => 'hidden',
-                                'description'   => lang('Current actions that are active for this plugin (when a domain isn\'t registered)'),
-                                'value'         => 'Purchase,CancelConfiguration (Cancel Configuration),ResendInviteEmail (Resend Invite Email),ResendFulfillmentEmail (Resend Fulfillment Email)'
-                                )
+                'type'          => 'text',
+                'description'   => lang('Enter your API Key here.'),
+                'value'         => ''
+            ),
+            lang('Actions') => array(
+                'type'          => 'hidden',
+                'description'   => lang('Current actions that are active for this plugin.'),
+                'value'         => 'Purchase,CancelOrder (Cancel Order),ResendApprovalEmail (Resend Approval Email)'
+            )
         );
 
         return $variables;
     }
 
+    /**
+     * Initiates the purchase.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return string A message indicating that the order was placed.
+     *
+     * @throws CE_Exception if the order token is not generated.
+     */
     function doPurchase($params)
     {
         $userPackage = new UserPackage($params['userPackageId']);
         $params = $this->buildParams($userPackage);
+        $orderPlaced = false;
+
+        // We need a CSR and admin email to complete the order
+        // These are required in the UI, but you can do purchase plugin action without them
+        if ($params['CSR'] == '' || $params['adminEmail'] == '') {
+            throw new CE_Exception('Missing CSR or Admin E-Mail');
+        }
 
         $certId = $userPackage->getCustomField('Certificate Id');
-        // no cert stored, so purchase the cert.
-        if ( $certId == '' ) {
-            // Step 1: Purchase Cert
-            $certId = $this->purchaseCert($params);
-            $userPackage->setCustomField('Certificate Id', $certId);
-            $params['certId'] = $certId;
+
+        // No certificate stored, purchase the certificate
+        if ($certId == '') {
+            // Generate an Order Token
+            $orderToken = $this->generateToken($params);
+
+            // We need an order token to continue
+            if ($orderToken == '') {
+                throw new CE_Exception('Failed to generate order token, cannot complete purchase');
+            }
+
+            $userPackage->setCustomField('Certificate Id', $orderToken);
+            $params['certId'] = $orderToken;
+
+            $orderPlaced = $this->placeOrder($params);
+        } else {
+            $status = $this->doGetCertStatus($params);
+
+            if ($status == 'Order Placed') {
+                $orderPlaced = $this->placeOrder($params);
+            }
+        }
+
+        if ($orderPlaced) {
+            return 'Purchase completed. Certificate sent for approval';
         }
     }
 
-    private function purchaseCert($params)
+    /**
+     * Generates the order token which is required for further action on an order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return string The order token element if the response is successful.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
+    private function generateToken($params)
     {
-        // Sort out number of years the cert if for.
+        $userPackage = new UserPackage($params['userPackageId']);
+        $params = $this->buildParams($userPackage);
+
         $years = "-12";
-        if ($params['numYears'] == '1') { $years = "-12"; }
-        if ($params['numYears'] == '2') { $years = "-24"; }
-        if ($params['numYears'] == '3') { $years = "-36"; }
-        if ($params['numYears'] == '4') { $years = "-48"; }
+        if ($params['numYears'] == '1') {
+            $years = "-12";
+        }
+        if ($params['numYears'] == '2') {
+            $years = "-24";
+        }
+        if ($params['numYears'] == '3') {
+            $years = "-36";
+        }
 
         $arguments = array(
-            'st_product_code'               => $this->getServiceNameById($params['typeId']) . $years,
             'api_key'                       => $params['API Key'],
+            'st_product_code'               => $this->getProductNameById($params['typeId']) . $years,
             'end_customer_email'            => $params['EmailAddress'],
-            'reseller_unique_reference'     => md5(time()),
-            'server_count'                  => 1,
-            'integration_source_id'         => 4 // CE integration source, to tell them it's from a CE instance
+            'reseller_unique_reference'     => md5(time())
         );
 
-        $response = $this->_makeRequest('/order/place', $arguments);
+        $response = $this->makeRequest('/order/generatetoken', $arguments);
+
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
 
-        if ( isset($response->success) ) {
-            return $response->reseller_order_id;
+        if (isset($response->success)) {
+            return $response->order_token;
         }
     }
 
+    /**
+     * Places the order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return bool True if the success element is set from the response, otherwise false.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
+    private function placeOrder($params)
+    {
+        $arguments = $this->configureCertificate($params);
+        $response = $this->makeRequest('/order/place', $arguments, 'POST'); // Must be POST
+
+        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+
+        return isset($response->success);
+    }
+
+    /**
+     * Configures the parameters required for making the certificate order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return array An array of arguments to be sent in the query string.
+     */
+    private function configureCertificate($params)
+    {
+        // These are required
+        $arguments = array(
+            'order_token'               => $params['certId'],
+            'csr'                       => str_replace("\r\n", '', $params['CSR']),
+            'admin_contact_title'       => 'N/A',
+            'admin_contact_first_name'  => $params['FirstName'],
+            'admin_contact_last_name'   => $params['LastName'],
+            'admin_contact_email'       => $params['EmailAddress'],
+            'admin_contact_phone'       => $this->validatePhone($params['Phone']),
+            'tech_contact_title'        => $params['Tech Job Title'],
+            'tech_contact_first_name'   => $params['Tech First Name'],
+            'tech_contact_last_name'    => $params['Tech Last Name'],
+            'tech_contact_email'        => $params['Tech E-Mail'],
+            'tech_contact_phone'        => $this->validatePhone($params['Tech Phone']),
+            'approver_email_address'    => $this->getApproverEmailAddress($params)
+        );
+
+        // TODO: Add other arguments to array based on product type
+
+        return $arguments;
+    }
+
+    /**
+     * Validates the phone number.
+     *
+     * @param string $phoneNumber The phone number.
+     *
+     * @return string The phone number with non-numerical characters removed.
+     */
+    private function validatePhone($phoneNumber)
+    {
+        // Strip out non numerical values
+        return preg_replace('/[^\d]/', '', $phoneNumber);
+    }
+
+    /**
+     * Gets the approver email address by comparing what's in the UI to
+     * the API's approved email list.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return string The approver email.
+     *
+     * @throws CE_Exception if the approver email from the package does not match the API approver email list.
+     */
+    private function getApproverEmailAddress($params)
+    {
+        $approverEmail = '';
+
+        // Decode the CSR so we can get the domain name
+        $csrDetails = $this->decodeCSR($params['CSR']);
+
+        if ($csrDetails) {
+            $domainName = $csrDetails['commonName'];
+        }
+
+        $approverEmails = $this->getApproverList($domainName);
+
+        $emailFound = false;
+        foreach ($approverEmails as $email) {
+            if ($email == $params["adminEmail"]) {
+                $emailFound = true;
+                $approverEmail = $params["adminEmail"];
+                break;
+            }
+        }
+
+        if (!$emailFound) {
+            $exceptionMessage = "Admin Email must be one of these values: \n\n";
+
+            foreach ($approverEmails as $email) {
+                $exceptionMessage .= $email . "\n";
+            }
+
+            throw new CE_Exception($exceptionMessage);
+        }
+
+        return $approverEmail;
+    }
+
+    /**
+     * Decodes the CSR.
+     *
+     * @param mixed $csr The encoded certificate signing request.
+     *
+     * @return array The information contained in the CSR in long format.
+     *
+     * @throws CE_Exception if the server does not have PHP openssl extension installed/loaded.
+     */
+    private function decodeCSR($csr)
+    {
+        // TODO: Update to Servertastic API endpoint for decoding CSR
+        // See https://tools.servertastic.com/certificate-decoder, according to ServerTastic, this will page will have an API endpoint we can use
+        if (extension_loaded('openssl')) {
+            return openssl_csr_get_subject($csr, false);
+        } else {
+            throw new CE_Exception("Failed to purchase certificate, openssl extension for PHP required.");
+        }
+    }
+
+    /**
+     * Gets the list of emails required for approval.
+     *
+     * @param string $domainName The domain name.
+     *
+     * @return array The list of approved emails from the API.
+     */
+    private function getApproverList($domainName)
+    {
+        $emails = array();
+
+        $arguments = array(
+            'domain_name'   => $domainName
+        );
+
+        $response = $this->makeRequest('/order/approverlist', $arguments);
+
+        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+
+        if ($response->success) {
+            foreach ($response->approver_email as $approverEmail) {
+                if (isset($approverEmail->email)) {
+                    $emails[] = $approverEmail->email;
+                }
+            }
+        };
+
+        return $emails;
+    }
+
+    /**
+     * Gets the CSR information from an existing order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return array The CSR information.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
     function doParseCSR($params)
     {
         $userPackage = new UserPackage($params['userPackageId']);
@@ -104,127 +328,141 @@ class PluginServertastic extends SSLPlugin
             'order_token'       => $params['certId']
         );
 
-        $response = $this->_makeRequest('/order/review', $arguments);
+        $response = $this->makeRequest('/order/review', $arguments);
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
 
-        $return = array();
-        if ( isset($response->success) ) {
-            $return['non_csr'] = true;
-            $return['domain'] = $response->domain_name;
-            $return['info']['Order Status'] = $response->order_status;
-            $return['info']['Invite URL'] = $response->invite_url;
-            $return['info']['Domain Name'] = $response->domain_name;
-            $return['info']['Customer EMail'] = $response->end_customer_email;
-            $return['info']['Organization Name'] = $response->organisation_info->name;
-            $return['info']['Organization Division'] = $response->organisation_info->division;
-            $return['info']['Organization City'] = $response->organisation_info->address->city;
-            $return['info']['Organization Region'] = $response->organisation_info->address->region;
-            $return['info']['Organization Country'] = $response->organisation_info->address->country;
-            $return['info']['Approver EMail'] = $response->approver_email_address;
+        $information = array();
+
+        if (isset($response->success)) {
+            $information['non_csr'] = true;
+            $information['domain'] = $response->domain_name;
+            $information['info']['Order Status'] = $response->order_status;
+            //$information['info']['Invite URL'] = $response->invite_url;
+            $information['info']['Domain Name'] = $response->domain_name;
+            $information['info']['Customer EMail'] = $response->end_customer_email;
+            $information['info']['Organization Name'] = $response->organisation_info->name;
+            $information['info']['Organization Division'] = $response->organisation_info->division;
+            $information['info']['Organization City'] = $response->organisation_info->address->city;
+            $information['info']['Organization Region'] = $response->organisation_info->address->region;
+            $information['info']['Organization Country'] = $response->organisation_info->address->country;
+            $information['info']['Approver EMail'] = $response->approver_email_address;
         }
-        return $return;
+
+        return $information;
     }
 
+    /**
+     * Gets the status of a certificate order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return string The status of the order.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
     function doGetCertStatus($params)
     {
         $userPackage = new UserPackage($params['userPackageId']);
         $params = $this->buildParams($userPackage);
 
+        // certId is the order token, if it doesn't exist, don't call the API
+        if ($params['certId'] == '') {
+            return '';
+        }
+
         $arguments = array(
-            'order_token'           => $params['certId']
+            'order_token'   => $params['certId']
         );
-        $response = $this->_makeRequest('/order/review', $arguments);
+
+        $response = $this->makeRequest('/order/review', $arguments);
 
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
 
-        if ( isset($response->success) ) {
+        if (isset($response->success)) {
             $status = strval($response->order_status);
 
-            if ( $status == 'Completed' ) {
+            $expirationDate = strval($response->expiry_date);
+            $userPackage->setCustomField('Certificate Expiration Date', $expirationDate);
+
+            $domainName = strval($response->domain_name);
+            $userPackage->setCustomField('Certificate Domain', $domainName);
+
+            if ($status == 'Completed') {
                 // cert is issued, so mark our internal status as issued so we don't poll anymore.
                 $userPackage->setCustomField('Certificate Status', SSL_CERT_ISSUED_STATUS);
             }
+
             return $status;
         }
     }
 
-    function doResendInviteEmail($params)
+    /**
+     * Re-sends the approval email to the configured admin email.
+     *
+     * @param $params An array of package parameters.
+     *
+     * @return string A message indicating the email was re-sent if the request was successful.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
+    function doResendApprovalEmail($params)
     {
         $userPackage = new UserPackage($params['userPackageId']);
         $params = $this->buildParams($userPackage);
 
         $arguments = array(
-            'api_key'               => $params['API Key'],
-            'email_type'            => 'Invite',
-            'reseller_order_id'     => $params['certId']
+            'order_token'     => $params['certId'],
+            'email_type'      => 'Approver'
         );
-        $response = $this->_makeRequest('/order/resendemail', $arguments);
+
+        $response = $this->makeRequest('/order/resendemail', $arguments);
 
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
 
-        if ( isset($response->success) ) {
-            return 'Successfully resent invite e-mail.';
+        if (isset($response->success)) {
+            return 'Successfully re-sent approval e-mail.';
         }
     }
 
-    function doResendApproverEmail($params)
+    /**
+     * Cancels an existing order.
+     *
+     * @param $params array The package parameters.
+     *
+     * @return string A message indicating the cancellation was completed if request was successful.
+     *
+     * @throws CE_Exception if no response from the API.
+     */
+    function doCancelOrder($params)
     {
         $userPackage = new UserPackage($params['userPackageId']);
         $params = $this->buildParams($userPackage);
 
         $arguments = array(
-            'api_key'               => $params['API Key'],
-            'email_type'            => 'Approver’',
-            'reseller_order_id'     => $params['certId']
+            'order_token'     => $params['certId']
         );
-        $response = $this->_makeRequest('/order/resendemail', $arguments);
+        $response = $this->makeRequest('/order/cancel', $arguments);
 
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
 
-        if ( isset($response->success) ) {
-            return 'Successfully resent approver e-mail.';
-        }
-    }
-
-    function doResendFulfillmentEmail($params)
-    {
-        $userPackage = new UserPackage($params['userPackageId']);
-        $params = $this->buildParams($userPackage);
-
-        $arguments = array(
-            'api_key'               => $params['API Key'],
-            'email_type'            => 'Fulfillment’]’',
-            'reseller_order_id'     => $params['certId']
-        );
-        $response = $this->_makeRequest('/order/resendemail', $arguments);
-
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
-
-        if ( isset($response->success) ) {
-            return 'Successfully resent fulfillment e-mail.';
-        }
-    }
-
-    function doCancelConfiguration($params)
-    {
-        $userPackage = new UserPackage($params['userPackageId']);
-        $params = $this->buildParams($userPackage);
-
-        $arguments = array(
-            'api_key'               => $params['API Key'],
-            'reseller_order_id'     => $params['certId']
-        );
-        $response = $this->_makeRequest('/order/cancel', $arguments);
-
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
-
-        if ( isset($response->success) ) {
+        if (isset($response->success)) {
             $userPackage->setCustomField("Certificate Id", '');
-            return 'Successfully cancelled configuration of certificate.';
+            return 'Successfully cancelled certificate order.';
         }
     }
 
-    function _makeRequest($url, $arguments)
+    /**
+     * Makes a request to the API.
+     *
+     * @param string $url The API endpoint (e.g. /order/place).
+     * @param array $arguments The arguments to append to the query string.
+     * @param string $requestType The type of API request (GET, POST, etc.).
+     *
+     * @return SimpleXmlElement The API response.
+     *
+     * @throws CE_Exception if the response errors from NE_Network class or API.
+     */
+    private function makeRequest($url, $arguments, $requestType = '')
     {
         require_once 'library/CE/NE_Network.php';
 
@@ -243,21 +481,34 @@ class PluginServertastic extends SSLPlugin
             $i++;
         }
 
-        CE_Lib::log(4, 'ServerTastic Params: '. print_r($arguments, true));
-        $response = NE_Network::curlRequest($this->settings, $request, false, false, true);
+        CE_Lib::log(4, 'ServerTastic Params: ' . print_r($arguments, true));
 
-        if (is_a($response, 'NE_Error')) throw new CE_Exception ($response);
+        if ($requestType == 'POST') {
+            $response = NE_Network::curlRequest($this->settings, $request, false, false, false, $requestType);
+        } else {
+            $response = NE_Network::curlRequest($this->settings, $request, false, false, true);
+        }
+
+        if (is_a($response, 'NE_Error')) throw new CE_Exception($response);
         if (!$response) return false;   // don't want xmlize an empty array
 
         $response = simplexml_load_string($response);
 
-        if ( isset($response->error) ) {
-            throw new CE_Exception ('ServerTastic Plugin Error: ' . $response->error->message);
+        if (isset($response->error)) {
+            throw new CE_Exception('ServerTastic Plugin Error: ' . $response->error->message);
         }
 
         return $response;
     }
 
+    /**
+     * Gets the available plugin actions based on the status of the order.
+     * This will change the dropdown in the admin UI.
+     *
+     * @param UserPackage $userPackage The user package.
+     *
+     * @return array An array of plugin actions.
+     */
     function getAvailableActions($userPackage)
     {
         $actions = array();
@@ -265,60 +516,74 @@ class PluginServertastic extends SSLPlugin
         try {
             $status = $this->doGetCertStatus($params);
 
-            if ( $status == 'Cancelled' || $status == 'Roll Back' ) {
+            if ($status == '' || $status == 'Order Placed' || $status == 'Cancelled' || $status == 'Roll Back') {
                 $actions[] = 'Purchase';
-            } else if ( $status == 'Awaiting Customer Verification' || $status == 'Awaiting Provider Approval' ) {
-                $actions[] = 'CancelConfiguration (Cancel Configuration)';
-                $actions[] = 'ResendApproverEmail (Resend Approver Email)';
-            } else if ( $status == 'Invite Available' ) {
-                $actions[] = 'CancelConfiguration (Cancel Configuration)';
-                $actions[] = 'ResendInviteEmail (Resend Invite Email)';
-            } else if ( $status == 'Completed' ) {
-                $actions[] = 'ResendFulfillmentEmail (Resend Fulfillment Email)';
+            } else if ($status == 'Awaiting Customer Verification' || $status == 'Awaiting Provider Approval') {
+                $actions[] = 'CancelOrder (Cancel Order)';
+                $actions[] = 'ResendApprovalEmail (Resend Approval Email)';
+            } else if ($status == 'Completed') {
+                $actions[] = 'CancelOrder (Cancel Order)';
             }
-        } catch ( CE_Exception $e ) {
+        } catch (CE_Exception $e) {
             $actions[] = 'Purchase';
         }
 
         return $actions;
     }
 
+    /**
+     * Gets the certificate types offered by ServerTastic.
+     *
+     * @return array The array of certificate types.
+     */
     function getCertificateTypes()
     {
-        return array (
+        return array(
             'RapidSSL' => 'RapidSSL',
             'RapidSSLWildcard' => 'RapidSSL Wildcard',
+            'PositiveSSL' => 'PositiveSSL',
+            'PositiveSSLWildcard' => 'PositiveSSLWildcard',
             'QuickSSLPremium' => 'GeoTrust QuickSSL Premium',
             'TrueBizID' => 'GeoTrust True BusinessID',
-            'TrueBizIDEV' => 'GeoTrust TrueBizID with EV',
-            'TrueBizIDWildcard' => 'GeoTrust TrueBizID Wildcard',
-            'SecureSite' => 'Verisign Secure Site',
-            'SecureSitePro' => 'Verisign Secure Site Pro',
-            'SecureSiteEV' => 'Verisign Secure Site EV',
-            'SecureSiteProEV' => 'Verisign Secure Site Pro EV',
-            'SSL123' => 'Thawte SSL Cert',
-            'SGCSuperCerts' => 'Thawte SGC SuperCert',
+            'TrueBizIDWildcard' => 'GeoTrust TrueBusinessID Wildcard',
+            'TrueBizIDEV' => 'GeoTrust TrueBusinessID with EV',
+            'SecureSite' => 'Symantec Secure Site',
+            'SecureSiteEV' => 'Symantec Secure Site EV',
+            'SecureSitePro' => 'Symantec Secure Site Pro',
+            'SecureSiteProEV' => 'Symantec Secure Site Pro EV',
             'SSLWebServer' => 'Thawte SSL Web Server',
+            'SSLWebServerWildCard' => 'Thawte SSL Web Server Wildcard',
             'SSLWebServerEV' => 'Thawte SSL Web Server EV',
-            'SSLWebServerWildCard' => 'Thawte SSL Wildcard',
+            'SSL123' => 'Thawte SSL 123'
         );
     }
 
-    private function getServiceNameById($id)
+    /**
+     * Gets the product name by its associated id.
+     *
+     * @param var $id The id as a defined constant.
+     *
+     * @return string The product name.
+     */
+    private function getProductNameById($id)
     {
-        switch ( $id ) {
+        switch ($id) {
             case SSL_CERT_RAPIDSSL:
                 return 'RapidSSL';
             case SSL_CERT_RAPIDSSL_WILDCARD:
                 return 'RapidSSLWildcard';
+            case SSL_CERT_COMODO_POSITIVESSL:
+                return 'PositiveSSL';
+            case SSL_CERT_COMODO_POSITIVESSL_WILDCARD:
+                return 'PositiveSSLWildcard';
             case SSL_CERT_GEOTRUST_QUICKSSL_PREMIUM:
                 return 'QuickSSLPremium';
             case SSL_CERT_GEOTRUST_TRUE_BUSINESSID:
                 return 'TrueBizID';
-            case SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV:
-                return 'TrueBizIDEV';
             case SSL_CERT_GEOTRUST_TRUE_BUSINESSID_WILDCARD:
                 return 'TrueBizIDWildcard';
+            case SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV:
+                return 'TrueBizIDEV';
             case SSL_CERT_VERISIGN_SECURE_SITE:
                 return 'SecureSite';
             case SSL_CERT_VERISIGN_SECURE_SITE_PRO:
@@ -327,18 +592,24 @@ class PluginServertastic extends SSLPlugin
                 return 'SecureSiteEV';
             case SSL_CERT_VERISIGN_SECURE_SITE_PRO_EV:
                 return 'SecureSiteProEV';
-            case SSL_CERT_THAWTE_SSL123:
-                return 'SSL123';
-            case SSL_CERT_THAWTE_SGC_SUPERCERT:
-                return 'SGCSuperCerts';
             case SSL_CERT_THAWTE_SSL_WEBSERVER:
                 return 'SSLWebServer';
-            case SSL_CERT_THAWTE_SSL_WEBSERVER_EV:
-                return 'SSLWebServerEV';
             case SSL_CERT_THAWTE_SSL_WEBSERVER_WILDCARD:
                 return 'SSLWebServerWildCard';
+            case SSL_CERT_THAWTE_SSL_WEBSERVER_EV:
+                return 'SSLWebServerEV';
+            case SSL_CERT_THAWTE_SSL123:
+                return 'SSL123';
         }
     }
+
+    /**
+     * Gets the web server types.
+     *
+     * @param mixed $type The type id.
+     *
+     * @return array An array of web server types.
+     */
     function getWebserverTypes($type)
     {
         return array();
