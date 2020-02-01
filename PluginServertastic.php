@@ -2,6 +2,14 @@
 
 require_once 'modules/admin/models/SSLPlugin.php';
 
+/**
+ * ServerTastic Plugin
+ *
+ * @category plugin
+ * @package  ssl
+ * @license  ClientExec License
+ * @link     http://www.clientexec.com
+ */
 class PluginServertastic extends SSLPlugin
 {
     public $mappedTypeIds = array(
@@ -23,8 +31,10 @@ class PluginServertastic extends SSLPlugin
         SSL_CERT_THAWTE_SSL123                          => 'SSL123'
     );
 
-    // This is no longer applicable for ServerTastic, keeping it around because
-    // other logic outside of this plugin depends on it.
+    /**
+     * Indicates if the plugin uses an invite URL process.
+     * @var bool
+     */
     public $usingInviteURL = false;
 
     /**
@@ -54,7 +64,7 @@ class PluginServertastic extends SSLPlugin
             lang('Actions') => array(
                 'type'          => 'hidden',
                 'description'   => lang('Current actions that are active for this plugin.'),
-                'value'         => 'Purchase,CancelOrder (Cancel Order),ResendApprovalEmail (Resend Approval Email)'
+                'value'         => 'Purchase,CancelOrder (Cancel Order),ResendApprovalEmail (Resend Approval Email),RenewCertificate (Renew Certificate)'
             )
         );
 
@@ -107,7 +117,7 @@ class PluginServertastic extends SSLPlugin
         }
 
         if ($orderPlaced) {
-            return 'Purchase completed. Certificate sent for approval';
+            return 'Purchase completed. Certificate sent for approval.';
         }
     }
 
@@ -156,14 +166,15 @@ class PluginServertastic extends SSLPlugin
      * Places the order.
      *
      * @param array $params The package parameters.
+     * @param bool $isRenewal Flag to indicate if the order is a renewal. By default this is false.
      *
      * @return bool True if the success element is set from the response, otherwise false.
      *
      * @throws CE_Exception if no response from the API.
      */
-    private function placeOrder($params)
+    private function placeOrder($params, $isRenewal = false)
     {
-        $arguments = $this->configureCertificate($params);
+        $arguments = $this->configureCertificate($params, $isRenewal);
         $response = $this->makeRequest('/order/place', $arguments, 'POST'); // Must be POST
 
         if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
@@ -175,12 +186,12 @@ class PluginServertastic extends SSLPlugin
      * Configures the parameters required for making the certificate order.
      *
      * @param array $params The package parameters.
+     * @param bool $isRenewal A flag to indicate if the order is a renewal.
      *
      * @return array An array of arguments to be sent in the query string.
      */
-    private function configureCertificate($params)
+    private function configureCertificate($params, $isRenewal)
     {
-        // These are required
         $arguments = array(
             'order_token'               => $params['certId'],
             'csr'                       => str_replace("\r\n", '', $params['CSR']),
@@ -194,10 +205,23 @@ class PluginServertastic extends SSLPlugin
             'tech_contact_last_name'    => $params['Tech Last Name'],
             'tech_contact_email'        => $params['Tech E-Mail'],
             'tech_contact_phone'        => $this->validatePhone($params['Tech Phone']),
-            'approver_email_address'    => $this->getApproverEmailAddress($params)
+            'approver_email_address'    => $this->getApproverEmailAddress($params),
+            'renewal'                   => $isRenewal ? 1 : 0
         );
 
-        // TODO: Add other arguments to array based on product type
+        $productName = $this->getProductNameById($params['typeId']);
+
+        // Server count for Symantec products
+        // TODO: Add a field for this in the UI and only show for Symantec(Verisign)
+        if (strpos($productName, 'SecureSite') !== false) {
+            $arguments['server_count'] = 1;
+        }
+
+        // Web server type for EV
+        // TODO: Show this in the UI for EV products
+        if (strpos($productName, 'EV') !== false) {
+            $arguments['WebServerType'] = $params['serverType'];
+        }
 
         return $arguments;
     }
@@ -334,10 +358,9 @@ class PluginServertastic extends SSLPlugin
         $information = array();
 
         if (isset($response->success)) {
-            $information['non_csr'] = true;
+            $information['non_csr'] = false;
             $information['domain'] = $response->domain_name;
             $information['info']['Order Status'] = $response->order_status;
-            //$information['info']['Invite URL'] = $response->invite_url;
             $information['info']['Domain Name'] = $response->domain_name;
             $information['info']['Customer EMail'] = $response->end_customer_email;
             $information['info']['Organization Name'] = $response->organisation_info->name;
@@ -452,6 +475,40 @@ class PluginServertastic extends SSLPlugin
     }
 
     /**
+     * Renews a certificate order.
+     *
+     * @param array $params The package parameters.
+     *
+     * @return string A message indicating the purchase was successful.
+     */
+    function doRenewCertificate($params)
+    {
+        $userPackage = new UserPackage($params['userPackageId']);
+        $params = $this->buildParams($userPackage);
+        $isRenewal = true;
+        $orderPlaced = false;
+
+        // Reset the certificate status
+        $userPackage->setCustomField("Certificate Status", '');
+
+        $orderToken = $this->generateToken($params);
+
+        if ($orderToken == '') {
+            throw new CE_Exception("Failed to generate order token, cannot complete renewal");
+        }
+
+        // Set our new order token as the cert id
+        $userPackage->setCustomField('Certificate Id', $orderToken);
+        $params['certId'] = $orderToken;
+
+        $orderPlaced = $this->placeOrder($params, $isRenewal);
+
+        if ($orderPlaced) {
+            return 'Renewal successful. Certificate sent for approval.';
+        }
+    }
+
+    /**
      * Makes a request to the API.
      *
      * @param string $url The API endpoint (e.g. /order/place).
@@ -523,6 +580,7 @@ class PluginServertastic extends SSLPlugin
                 $actions[] = 'ResendApprovalEmail (Resend Approval Email)';
             } else if ($status == 'Completed') {
                 $actions[] = 'CancelOrder (Cancel Order)';
+                $actions[] = 'RenewCertificate (Renew Certificate)';
             }
         } catch (CE_Exception $e) {
             $actions[] = 'Purchase';
