@@ -404,7 +404,9 @@ class PluginServertastic extends SSLPlugin
         if (isset($response->success)) {
             $status = strval($response->order_status);
 
-            $expirationDate = strval($response->expiry_date);
+            $expiryDate = new DateTime(strval($response->expiry_date));
+            $expirationDate = $expiryDate->format('m/d/Y h:i:s A');
+
             $userPackage->setCustomField('Certificate Expiration Date', $expirationDate);
 
             $domainName = strval($response->domain_name);
