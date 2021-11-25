@@ -13,22 +13,22 @@ require_once 'modules/admin/models/SSLPlugin.php';
 class PluginServertastic extends SSLPlugin
 {
     public $mappedTypeIds = array(
-        SSL_CERT_RAPIDSSL                               => 'RapidSSL',
-        SSL_CERT_RAPIDSSL_WILDCARD                      => 'RapidSSLWildcard',
-        SSL_CERT_COMODO_POSITIVESSL                     => 'PositiveSSL',
-        SSL_CERT_COMODO_POSITIVESSL_WILDCARD            => 'PositiveSSLWildcard',
-        SSL_CERT_GEOTRUST_QUICKSSL_PREMIUM              => 'QuickSSLPremium',
-        SSL_CERT_GEOTRUST_TRUE_BUSINESSID               => 'TrueBizID',
-        SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV            => 'TrueBizIDEV',
-        SSL_CERT_GEOTRUST_TRUE_BUSINESSID_WILDCARD      => 'TrueBizIDWildcard',
-        SSL_CERT_VERISIGN_SECURE_SITE                   => 'SecureSite',
-        SSL_CERT_VERISIGN_SECURE_SITE_EV                => 'SecureSiteEV',
-        SSL_CERT_VERISIGN_SECURE_SITE_PRO               => 'SecureSitePro',
-        SSL_CERT_VERISIGN_SECURE_SITE_PRO_EV            => 'SecureSiteProEV',
-        SSL_CERT_THAWTE_SSL_WEBSERVER                   => 'SSLWebServer',
-        SSL_CERT_THAWTE_SSL_WEBSERVER_WILDCARD          => 'SSLWebServerWildCard',
-        SSL_CERT_THAWTE_SSL_WEBSERVER_EV                => 'SSLWebServerEV',
-        SSL_CERT_THAWTE_SSL123                          => 'SSL123'
+        SSL_CERT_RAPIDSSL => 'RapidSSL',
+        SSL_CERT_RAPIDSSL_WILDCARD => 'RapidSSLWildcard',
+        SSL_SECTIGO_POSITIVESSL => 'PositiveSSL',
+        SSL_SECTIGO_POSITIVESSL_WILDCARD => 'PositiveSSLWildcard',
+        SSL_CERT_GEOTRUST_QUICKSSL_PREMIUM => 'QuickSSLPremium',
+        SSL_CERT_GEOTRUST_TRUE_BUSINESSID => 'TrueBizID',
+        SSL_CERT_GEOTRUST_TRUE_BUSINESSID_EV => 'TrueBizIDEV',
+        SSL_CERT_GEOTRUST_TRUE_BUSINESSID_WILDCARD => 'TrueBizIDWildcard',
+        SSL_CERT_VERISIGN_SECURE_SITE => 'SecureSite',
+        SSL_CERT_VERISIGN_SECURE_SITE_EV => 'SecureSiteEV',
+        SSL_CERT_VERISIGN_SECURE_SITE_PRO => 'SecureSitePro',
+        SSL_CERT_VERISIGN_SECURE_SITE_PRO_EV => 'SecureSiteProEV',
+        SSL_CERT_THAWTE_SSL_WEBSERVER => 'SSLWebServer',
+        SSL_CERT_THAWTE_SSL_WEBSERVER_WILDCARD => 'SSLWebServerWildCard',
+        SSL_CERT_THAWTE_SSL_WEBSERVER_EV => 'SSLWebServerEV',
+        SSL_CERT_THAWTE_SSL123 => 'SSL123'
     );
 
     /**
@@ -51,11 +51,6 @@ class PluginServertastic extends SSLPlugin
                 'description'   => lang('How CE sees this plugin (not to be confused with the Signup Name)'),
                 'value'         => lang('ServerTastic')
             ),
-            lang('Use testing server') => array(
-                'type'          => 'yesno',
-                'description'   => lang('Select Yes if you wish to use ServerTastic\'s testing environment, so that transactions are not actually made. For this to work, you must first register you server\'s ip in ServerTastic\'s testing environment, and your server\'s name servers must be registered there as well.'),
-                'value'         => 0
-            ),
             lang('API Key') => array(
                 'type'          => 'text',
                 'description'   => lang('Enter your API Key here.'),
@@ -64,7 +59,7 @@ class PluginServertastic extends SSLPlugin
             lang('Actions') => array(
                 'type'          => 'hidden',
                 'description'   => lang('Current actions that are active for this plugin.'),
-                'value'         => 'Purchase,CancelOrder (Cancel Order),ResendApprovalEmail (Resend Approval Email),RenewCertificate (Renew Certificate)'
+                'value'         => 'Purchase,CancelOrder (Cancel Order),ResendApprovalEmail (Resend Approval Email),RenewCertificate (Renew Certificate)',
             )
         );
 
@@ -122,7 +117,8 @@ class PluginServertastic extends SSLPlugin
     }
 
     /**
-     * Generates the order token which is required for further action on an order.
+     * Generates the order token which is required
+     * for further action on an order.
      *
      * @param array $params The package parameters.
      *
@@ -155,7 +151,12 @@ class PluginServertastic extends SSLPlugin
 
         $response = $this->makeRequest('/order/generatetoken', $arguments);
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         if (isset($response->success)) {
             return $response->order_token;
@@ -175,9 +176,16 @@ class PluginServertastic extends SSLPlugin
     private function placeOrder($params, $isRenewal = false)
     {
         $arguments = $this->configureCertificate($params, $isRenewal);
-        $response = $this->makeRequest('/order/place', $arguments, 'POST'); // Must be POST
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        // Must be POST
+        $response = $this->makeRequest('/order/place', $arguments, 'POST');
+
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         return isset($response->success);
     }
@@ -321,7 +329,12 @@ class PluginServertastic extends SSLPlugin
 
         $response = $this->makeRequest('/order/approverlist', $arguments);
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         if ($response->success) {
             foreach ($response->approver_email as $approverEmail) {
@@ -353,22 +366,30 @@ class PluginServertastic extends SSLPlugin
         );
 
         $response = $this->makeRequest('/order/review', $arguments);
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         $information = array();
 
         if (isset($response->success)) {
             $information['non_csr'] = false;
             $information['domain'] = $response->domain_name;
-            $information['info']['Order Status'] = $response->order_status;
-            $information['info']['Domain Name'] = $response->domain_name;
-            $information['info']['Customer EMail'] = $response->end_customer_email;
-            $information['info']['Organization Name'] = $response->organisation_info->name;
-            $information['info']['Organization Division'] = $response->organisation_info->division;
-            $information['info']['Organization City'] = $response->organisation_info->address->city;
-            $information['info']['Organization Region'] = $response->organisation_info->address->region;
-            $information['info']['Organization Country'] = $response->organisation_info->address->country;
-            $information['info']['Approver EMail'] = $response->approver_email_address;
+            $information['city'] = $response->organisation_info->address->city;
+
+            $information['state'] =
+                $response->organisation_info->address->region;
+
+            $information['country'] =
+                $response->organisation_info->address->country;
+
+            $information['organization'] = $response->organisation_info->name;
+            $information['ou'] = $response->organisation_info->division;
+            $information['email'] = $response->end_customer_email;
         }
 
         return $information;
@@ -399,26 +420,60 @@ class PluginServertastic extends SSLPlugin
 
         $response = $this->makeRequest('/order/review', $arguments);
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         if (isset($response->success)) {
             $status = strval($response->order_status);
 
-            $expiryDate = new DateTime(strval($response->expiry_date));
-            $expirationDate = $expiryDate->format('m/d/Y h:i:s A');
-
-            $userPackage->setCustomField('Certificate Expiration Date', $expirationDate);
+            $this->setExpirationDate($response->certificate_list, $userPackage);
 
             $domainName = strval($response->domain_name);
             $userPackage->setCustomField('Certificate Domain', $domainName);
 
             if ($status == 'Completed') {
-                // cert is issued, so mark our internal status as issued so we don't poll anymore.
-                $userPackage->setCustomField('Certificate Status', SSL_CERT_ISSUED_STATUS);
+                // cert is issued, so mark our internal status
+                // as issued so we don't poll anymore.
+                $userPackage->setCustomField(
+                    'Certificate Status',
+                    SSL_CERT_ISSUED_STATUS
+                );
             }
 
             return $status;
         }
+    }
+
+    /**
+     * Sets the expiration date from the list of certificates
+     *
+     * @since 1.0.0
+     *
+     * @return void
+     */
+    private function setExpirationDate(array $certificates, $package) {
+        if (empty($certificates)) {
+            return;
+        }
+
+        // Get the first certificate in the list
+        $certificate = $certificates[0];
+
+        if ($certificate->expiration_date === null) {
+            return;
+        }
+
+        $expiration = new DateTime(strval($certificate->expiration_date));
+        $expirationDate = $expiration->format('m/d/Y h:i:s A');
+
+        $package->setCustomField(
+            'Certificate Expiration Date',
+            $expirationDate
+        );
     }
 
     /**
@@ -442,7 +497,12 @@ class PluginServertastic extends SSLPlugin
 
         $response = $this->makeRequest('/order/resendemail', $arguments);
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         if (isset($response->success)) {
             return 'Successfully re-sent approval e-mail.';
@@ -468,7 +528,12 @@ class PluginServertastic extends SSLPlugin
         );
         $response = $this->makeRequest('/order/cancel', $arguments);
 
-        if (!is_object($response)) throw new CE_Exception('ServerTastic Plugin Error: Failed to communicate with ServerTastic', EXCEPTION_CODE_CONNECTION_ISSUE);
+        if (!is_object($response)) {
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: Failed to communicate with ServerTastic',
+                EXCEPTION_CODE_CONNECTION_ISSUE
+            );
+        }
 
         if (isset($response->success)) {
             $userPackage->setCustomField("Certificate Id", '');
@@ -496,7 +561,9 @@ class PluginServertastic extends SSLPlugin
         $orderToken = $this->generateToken($params);
 
         if ($orderToken == '') {
-            throw new CE_Exception("Failed to generate order token, cannot complete renewal");
+            throw new CE_Exception(
+                "Failed to generate order token, cannot complete renewal"
+            );
         }
 
         // Set our new order token as the cert id
@@ -508,6 +575,10 @@ class PluginServertastic extends SSLPlugin
         if ($orderPlaced) {
             return 'Renewal successful. Certificate sent for approval.';
         }
+    }
+
+    function doReissueCertificate($params) {
+        // TODO: Implement for multi year certificates
     }
 
     /**
@@ -525,12 +596,8 @@ class PluginServertastic extends SSLPlugin
     {
         require_once 'library/CE/NE_Network.php';
 
-        $request = 'https://';
-
-        if (@$this->settings->get('plugin_ServerTastic_Use testing server')) $request .= 'test-api2.servertastic.com';
-        else $request .= 'api2.servertastic.com';
-
-        $request .= $url;
+        $request = 'https://api.servertastic.com/v2';
+        $request .= $url . '.json'; // XML response is deprecated
 
         $i = 0;
         foreach ($arguments as $name => $value) {
@@ -548,13 +615,20 @@ class PluginServertastic extends SSLPlugin
             $response = NE_Network::curlRequest($this->settings, $request, false, false, true);
         }
 
-        if (is_a($response, 'NE_Error')) throw new CE_Exception($response);
-        if (!$response) return false;   // don't want xmlize an empty array
+        if (is_a($response, 'NE_Error')) {
+            throw new CE_Exception($response);
+        }
 
-        $response = simplexml_load_string($response);
+        if (!$response) {
+            return false; // don't want process an empty array
+        }
+
+        $response = json_decode($response);
 
         if (isset($response->error)) {
-            throw new CE_Exception('ServerTastic Plugin Error: ' . $response->error->message);
+            throw new CE_Exception(
+                'ServerTastic Plugin Error: ' . $response->error->message
+            );
         }
 
         return $response;
@@ -575,14 +649,22 @@ class PluginServertastic extends SSLPlugin
         try {
             $status = $this->doGetCertStatus($params);
 
-            if ($status == '' || $status == 'Order Placed' || $status == 'Cancelled' || $status == 'Roll Back') {
-                $actions[] = 'Purchase';
-            } else if ($status == 'Awaiting Customer Verification' || $status == 'Awaiting Provider Approval') {
-                $actions[] = 'CancelOrder (Cancel Order)';
-                $actions[] = 'ResendApprovalEmail (Resend Approval Email)';
+            if ($status == ''
+                || $status == 'Order Placed'
+                || $status == 'Cancelled'
+                || $status == 'Roll Back') {
+                    $actions[] = 'Purchase';
+            } else if ($status == 'Awaiting Customer Verification'
+                || $status == 'Awaiting Provider Approval') {
+                    $actions[] = 'CancelOrder (Cancel Order)';
+                    $actions[] = 'ResendApprovalEmail (Resend Approval Email)';
             } else if ($status == 'Completed') {
-                $actions[] = 'CancelOrder (Cancel Order)';
-                $actions[] = 'RenewCertificate (Renew Certificate)';
+                    $actions[] = 'CancelOrder (Cancel Order)';
+                    $actions[] = 'RenewCertificate (Renew Certificate)';
+
+                    // TODO: Only show if billing cycle is greater than 1 year
+                    // This is currently not active
+                    $actions[] = 'ReissueCertificate (Reissue Certificate)';
             }
         } catch (CE_Exception $e) {
             $actions[] = 'Purchase';
@@ -632,9 +714,9 @@ class PluginServertastic extends SSLPlugin
                 return 'RapidSSL';
             case SSL_CERT_RAPIDSSL_WILDCARD:
                 return 'RapidSSLWildcard';
-            case SSL_CERT_COMODO_POSITIVESSL:
+            case SSL_SECTIGO_POSITIVESSL:
                 return 'PositiveSSL';
-            case SSL_CERT_COMODO_POSITIVESSL_WILDCARD:
+            case SSL_SECTIGO_POSITIVESSL_WILDCARD:
                 return 'PositiveSSLWildcard';
             case SSL_CERT_GEOTRUST_QUICKSSL_PREMIUM:
                 return 'QuickSSLPremium';
