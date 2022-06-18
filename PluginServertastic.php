@@ -106,7 +106,7 @@ class PluginServertastic extends SSLPlugin
         } else {
             $status = $this->doGetCertStatus($params);
 
-            if ($status == 'Order Placed') {
+            if ($status == 'Order Placed' || $status == 'Order Generated') {
                 $orderPlaced = $this->placeOrder($params);
             }
         }
@@ -201,20 +201,21 @@ class PluginServertastic extends SSLPlugin
     private function configureCertificate($params, $isRenewal)
     {
         $arguments = array(
-            'order_token'               => $params['certId'],
-            'csr'                       => str_replace("\r\n", '', $params['CSR']),
-            'admin_contact_title'       => 'N/A',
-            'admin_contact_first_name'  => $params['FirstName'],
-            'admin_contact_last_name'   => $params['LastName'],
-            'admin_contact_email'       => $params['EmailAddress'],
-            'admin_contact_phone'       => $this->validatePhone($params['Phone']),
-            'tech_contact_title'        => $params['Tech Job Title'],
-            'tech_contact_first_name'   => $params['Tech First Name'],
-            'tech_contact_last_name'    => $params['Tech Last Name'],
-            'tech_contact_email'        => $params['Tech E-Mail'],
-            'tech_contact_phone'        => $this->validatePhone($params['Tech Phone']),
-            'approver_email_address'    => $this->getApproverEmailAddress($params),
-            'renewal'                   => $isRenewal ? 1 : 0
+            'order_token' => $params['certId'],
+            'csr' => str_replace("\r\n", '', $params['CSR']),
+            'admin_contact_title' => 'N/A',
+            'admin_contact_first_name' => $params['FirstName'],
+            'admin_contact_last_name' => $params['LastName'],
+            'admin_contact_email' => $params['EmailAddress'],
+            'admin_contact_phone' => $this->validatePhone($params['Phone']),
+            'tech_contact_title' => $params['Tech Job Title'],
+            'tech_contact_first_name' => $params['Tech First Name'],
+            'tech_contact_last_name' => $params['Tech Last Name'],
+            'tech_contact_email' => $params['Tech E-Mail'],
+            'tech_contact_phone' => $this->validatePhone($params['Tech Phone']),
+            'approver_email_address' => $this->getApproverEmailAddress($params),
+            'renewal' => $isRenewal ? 1 : 0,
+            'dv_auth_method' => 'EMAIL'
         );
 
         $productName = $this->getProductNameById($params['typeId']);
@@ -430,12 +431,16 @@ class PluginServertastic extends SSLPlugin
         if (isset($response->success)) {
             $status = strval($response->order_status);
 
+            if ('Cancelled' === $status || 'Order Generated' === $status) {
+                return $status;
+            }
+
             $this->setExpirationDate($response->certificate_list, $userPackage);
 
             $domainName = strval($response->domain_name);
             $userPackage->setCustomField('Certificate Domain', $domainName);
 
-            if ($status == 'Completed') {
+            if ('Completed' === $status) {
                 // cert is issued, so mark our internal status
                 // as issued so we don't poll anymore.
                 $userPackage->setCustomField(
@@ -651,6 +656,7 @@ class PluginServertastic extends SSLPlugin
 
             if ($status == ''
                 || $status == 'Order Placed'
+                || $status == 'Order Generated'
                 || $status == 'Cancelled'
                 || $status == 'Roll Back') {
                     $actions[] = 'Purchase';
